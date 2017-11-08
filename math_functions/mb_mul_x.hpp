@@ -8,17 +8,17 @@
 #include <stddef.h>
 #include <memory.h>
 
-namespace accel::algorithm::math {
-
-#if defined(_M_X64)
-    extern void MultiplyByKaratsuba(const uint64_t src1[], const uint64_t src2[], size_t srclength,
-                                    uint64_t dest[]);
-#elif defined(_M_IX86)
-    extern void MultiplyByKaratsuba(const uint32_t src1[], const uint32_t src2[], size_t srclength,
-                                    uint32_t dest[]);
-#endif
-
-}
+// namespace accel::algorithm::math {
+// 
+// #if defined(_M_X64)
+//     extern void MultiplyByKaratsuba(const uint64_t src1[], const uint64_t src2[], size_t srclength,
+//                                     uint64_t dest[]);
+// #elif defined(_M_IX86)
+//     extern void MultiplyByKaratsuba(const uint32_t src1[], const uint32_t src2[], size_t srclength,
+//                                     uint32_t dest[]);
+// #endif
+// 
+// }
 
 namespace accel::math {
 
@@ -95,20 +95,20 @@ namespace accel::math {
         return true;
     }
 
-    __forceinline bool mb_mul_mb_Karatsuba(const uint64_t multiplier[], const uint64_t multiplicand[], size_t length1,
-                                           uint64_t product[], size_t length2) {
-        if (length1 == 0 || length2 == 0)
-            return false;
-
-        while (length1 > 0 && multiplier[length1 - 1] == 0 && multiplicand[length1 - 1] == 0)
-            --length1;
-
-        if (length1 * 2 > length2)
-            return false;
-
-        accel::algorithm::math::MultiplyByKaratsuba(multiplier, multiplicand, length1, product);
-        return true;
-    }
+//     __forceinline bool mb_mul_mb_Karatsuba(const uint64_t multiplier[], const uint64_t multiplicand[], size_t length1,
+//                                            uint64_t product[], size_t length2) {
+//         if (length1 == 0 || length2 == 0)
+//             return false;
+// 
+//         while (length1 > 0 && multiplier[length1 - 1] == 0 && multiplicand[length1 - 1] == 0)
+//             --length1;
+// 
+//         if (length1 * 2 > length2)
+//             return false;
+// 
+//         accel::algorithm::math::MultiplyByKaratsuba(multiplier, multiplicand, length1, product);
+//         return true;
+//     }
 
 #elif defined(_M_IX86)
 
@@ -189,17 +189,17 @@ namespace accel::math {
         return true;
     }
 
-    __forceinline bool mb_mul_mb_Karatsuba(const uint32_t multiplier[], const uint32_t multiplicand[], size_t length1,
-                                           uint32_t product[], size_t length2) {
-        if (length1 == 0 || length2 == 0)
-            return false;
-
-        if (length1 * 2 > length2)
-            return false;
-
-        accel::algorithm::math::MultiplyByKaratsuba(multiplier, multiplicand, length1, product);
-        return true;
-    }
+//     __forceinline bool mb_mul_mb_Karatsuba(const uint32_t multiplier[], const uint32_t multiplicand[], size_t length1,
+//                                            uint32_t product[], size_t length2) {
+//         if (length1 == 0 || length2 == 0)
+//             return false;
+// 
+//         if (length1 * 2 > length2)
+//             return false;
+// 
+//         accel::algorithm::math::MultiplyByKaratsuba(multiplier, multiplicand, length1, product);
+//         return true;
+//     }
 
 #endif
 

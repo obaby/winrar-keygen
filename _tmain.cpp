@@ -241,9 +241,13 @@ namespace WinRAR {
     void GeneratePublicX(const uint64_t (&in_PrivateKey)[4], uint64_t (&out_PublicX)[4]) {
         auto nP = G.GetNP(in_PrivateKey, 4);
         nP.X.ToDecimal(out_PublicX);
-
+#if defined(_M_X64)
         accel::math::mb_mul_u64(out_PublicX, 4, 2);
         accel::math::mb_add_u64(out_PublicX, 4, (nP.Y / nP.X).Value[0] & 1, 0);
+#elif defined(_M_IX86)
+        accel::math::mb_mul_u32(reinterpret_cast<uint32_t*>(out_PublicX), 8, 2);
+        accel::math::mb_add_u32(reinterpret_cast<uint32_t*>(out_PublicX), 8, (nP.Y / nP.X).Value[0] & 1, 0);
+#endif
     }
 
     void GeneratePublicX(const uint8_t in_private[], size_t in_private_length, uint64_t(&out_PublicX)[4]) {
@@ -284,6 +288,7 @@ namespace WinRAR {
 
         memset(out_SignData.r, 0, sizeof(out_SignData.r));
         G.GetNP(K, 4).X.ToDecimal(out_SignData.r);
+#if defined(_M_X64)
         accel::math::mb_add_mb(out_SignData.r, 4, Hash, 4, 0);
         accel::math::mb_div_mb(out_SignData.r, 4, Order, 4, out_SignData.s, 4);
 
@@ -295,7 +300,34 @@ namespace WinRAR {
 
         if(accel::math::mb_sub_mb(K, 4, PrivateKey_mul_r, 4, out_SignData.s, 4, 0))
             accel::math::mb_add_mb(out_SignData.s, 4, Order, 4, 0);
+#elif defined(_M_IX86)
+        accel::math::mb_add_mb(reinterpret_cast<uint32_t*>(out_SignData.r), 8, 
+                               reinterpret_cast<uint32_t*>(Hash), 8, 
+                               0);
+        accel::math::mb_div_mb(reinterpret_cast<uint32_t*>(out_SignData.r), 8, 
+                               reinterpret_cast<const uint32_t*>(Order), 8, 
+                               reinterpret_cast<uint32_t*>(out_SignData.s), 8);
 
+        memset(out_SignData.s, 0, sizeof(out_SignData.s));
+        uint64_t PrivateKey_mul_r[8] = { };
+        uint64_t temp_quotient[5] = { };
+        accel::math::mb_mul_mb(reinterpret_cast<uint32_t*>(PrivateKey), 8, 
+                               reinterpret_cast<uint32_t*>(out_SignData.r), 8, 
+                               reinterpret_cast<uint32_t*>(PrivateKey_mul_r), 16);
+
+        accel::math::mb_div_mb(reinterpret_cast<uint32_t*>(PrivateKey_mul_r), 16, 
+                               reinterpret_cast<const uint32_t*>(Order), 8, 
+                               reinterpret_cast<uint32_t*>(temp_quotient), 10);
+
+        if (accel::math::mb_sub_mb(reinterpret_cast<uint32_t*>(K), 8,
+                                   reinterpret_cast<uint32_t*>(PrivateKey_mul_r), 8,
+                                   reinterpret_cast<uint32_t*>(out_SignData.s), 8,
+                                   0)) {
+            accel::math::mb_add_mb(reinterpret_cast<uint32_t*>(out_SignData.s), 8, 
+                                   reinterpret_cast<const uint32_t*>(Order), 8, 
+                                   0);
+        }
+#endif
     }
 
 }
@@ -430,22 +462,6 @@ void StartTest() {
 
     assert(a3.GetNP(b3, 4) == c3);
     _tprintf_s(TEXT("Test 4 passed.\n"));
-
-    auto a4 = ecCurve.GetPoint({ 
-        0x3A1A, 0x1109, 0x268A, 0x12F7,
-        0x3734, 0x75F0, 0x576C, 0x2EA4,
-        0x4813, 0x3F62, 0x0567, 0x784D,
-        0x753D, 0x6D92, 0x366C, 0x1107, 
-        0x3861 
-    }, { 
-        0x6C20, 0x6027, 0x1B22, 0x7A87, 
-        0x43C4, 0x1908, 0x2449, 0x4675, 
-        0x7933, 0x2E66, 0x32F5, 0x2A58,
-        0x1145, 0x74AC, 0x36D0, 0x2731,
-        0x12B6 
-    });
-
-
 }
 #endif // _DEBUG
 
@@ -513,37 +529,48 @@ uint32_t GenerateChecksum(const char* UserName, const char* LicenseType, char(&R
 }
 
 int _tmain(int argc, TCHAR* argv[]) {
+
+    if (argc != 3) {
+        _tprintf_s(TEXT("Usage:\n"));
+        _tprintf_s(TEXT("        winrar-keygen.exe <your name> <license type>\n\n"));
+        _tprintf_s(TEXT("Example:\n\n"));
+        _tprintf_s(TEXT("        winrar-keygen.exe \"Rebecca Morrison\" \"Single PC usage license\"\n"));
+        _tprintf_s(TEXT(" or:\n"));
+        _tprintf_s(TEXT("        winrar-keygen.exe \"Rebecca Morrison\" \"Single PC usage license\" >> rarreg.key\n\n"));
+        return 0;
+    }
+
     GaloisField$2$15<WinRAR::BasePoly>::InitTable();
     WinRAR::InitSBox(WinRAR::SBox);
 
-    char UserName[] = "DoubleSine";
-    char LicenseType[] = "Single PC usage license";
+    char* UserName = argv[1];
+    char* LicenseType = argv[2];
 
-    char buffer[4][512];
-    char uid[512];
-    if (GenerateRegisterData(UserName, LicenseType, buffer, uid) == false)
+    char RegisterData[4][512];
+    char UID[512];
+    if (GenerateRegisterData(UserName, LicenseType, RegisterData, UID) == false)
         throw std::overflow_error("buffer is too small.");
 
-    uint32_t checksum = GenerateChecksum(UserName, LicenseType, buffer);
+    uint32_t checksum = GenerateChecksum(UserName, LicenseType, RegisterData);
 
     _tprintf_s(TEXT("RAR registration data\n%s\n%s\n%s\n"), 
                UserName,
                LicenseType,
-               uid);
+               UID);
 
-    _stprintf_s(uid, TEXT("%zd%zd%zd%zd%s%s%s%s%lu"),
-                strlen(buffer[0]),
-                strlen(buffer[1]),
-                strlen(buffer[2]),
-                strlen(buffer[3]),
-                buffer[0],
-                buffer[1],
-                buffer[2],
-                buffer[3], 
+    _stprintf_s(UID, TEXT("%zd%zd%zd%zd%s%s%s%s%lu"),
+                strlen(RegisterData[0]),
+                strlen(RegisterData[1]),
+                strlen(RegisterData[2]),
+                strlen(RegisterData[3]),
+                RegisterData[0],
+                RegisterData[1],
+                RegisterData[2],
+                RegisterData[3], 
                 checksum);
 
     for (int i = 0; i < 8; ++i)
-        _tprintf_s(TEXT("%.54s\n"), uid + i * 54);
+        _tprintf_s(TEXT("%.54s\n"), UID + i * 54);
 
 	return 0;
 }
